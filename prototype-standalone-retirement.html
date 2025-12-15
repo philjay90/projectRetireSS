@@ -1073,7 +1073,7 @@
         const currentUser = {
             id: 'david-martinez',
             name: 'David Martinez',
-            age: 52,
+            age: 48,
             initial: 'D',
             account: {
                 balance: 412890.45,
@@ -1099,7 +1099,9 @@
                 { date: '2025-12-01', type: 'match', amount: 355 },
             ],
             externalAccounts: [
-                { provider: 'Previous Employer 401k', balance: 89000, lastUpdated: '2025-06-15' }
+                { provider: 'Previous Employer 401k (Company A)', balance: 45000, lastUpdated: '2023-08-10' },
+                { provider: 'Previous Employer 401k (Company B)', balance: 32000, lastUpdated: '2021-03-22' },
+                { provider: 'Previous Employer 401k (Company C)', balance: 18000, lastUpdated: '2019-11-05' }
             ]
         };
 
@@ -1108,6 +1110,7 @@
         // ============================================
         let chatMessages = [];
         let isTyping = false;
+        let unhandledReplies = new Set(); // Track quick replies that were clicked but not handled
 
         // ============================================
         // INITIALIZATION
@@ -1115,10 +1118,10 @@
         function init() {
             renderDashboard();
             if (chatMessages.length === 0) {
-                addAIMessage('Good to see you, David. Your retirement planning is on track. How can I assist you today?', [
-                    'Am I on track?',
-                    'Tell me about catch-up contributions',
-                    'How do I consolidate old accounts?',
+                addAIMessage('Hello David. I\'m here to help you get clarity on your retirement planning. What would you like to know?', [
+                    'Am I on track to retire at 65?',
+                    'How do catch-up contributions work?',
+                    'Should I consolidate my old 401(k)s?',
                     'What\'s my balance?'
                 ]);
             }
@@ -1202,6 +1205,13 @@
         function openChatbot() {
             document.getElementById('chatbotContainer').classList.add('open');
             document.getElementById('chatButton').style.display = 'none';
+            // Scroll to bottom when opening chatbot
+            setTimeout(() => {
+                const messagesDiv = document.getElementById('chatbotMessages');
+                if (messagesDiv) {
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            }, 100);
             document.getElementById('chatInput').focus();
         }
 
@@ -1212,7 +1222,7 @@
 
         function animateMessage(messageDiv, contentDiv, fullContent, quickReplies, onComplete) {
             let currentIndex = 0;
-            const speed = 8; // milliseconds per character - quite fast
+            const speed = 15; // milliseconds per character - matches original prototype
             let inTag = false;
             let currentTag = '';
             const messagesDiv = document.getElementById('chatbotMessages');
@@ -1356,6 +1366,18 @@
             const lowerMsg = message.toLowerCase();
             const account = currentUser.account;
             
+            // Check if this was an unhandled reply - if so, restart conversation
+            if (unhandledReplies.has(message)) {
+                unhandledReplies.clear(); // Reset tracking
+                chatMessages = [];
+                document.getElementById('chatbotMessages').innerHTML = '';
+                init(); // Restart conversation
+                return;
+            }
+            
+            // Track whether we successfully handled this message
+            let messageHandled = false;
+            
             // Show typing indicator
             const messagesDiv = document.getElementById('chatbotMessages');
             const typingDiv = document.createElement('div');
@@ -1377,13 +1399,24 @@
             setTimeout(() => {
                 document.getElementById('typingIndicator').remove();
                 
-                // Balance inquiry (Gen X tone: reassuring, detailed)
-                if (lowerMsg.includes('balance') || lowerMsg.includes('how much')) {
-                    const response = `Your current balance is $${account.balance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}.\n\nThis includes your regular contributions plus the $${account.catchUpContribution.toLocaleString()} catch-up contribution you're taking advantage of this year. That's a solid approach to maximizing your savings.\n\nYour account is up ${(account.ytdReturn * 100).toFixed(1)}% year-to-date. Would you like to see a breakdown or discuss your retirement readiness?`;
-                    addAIMessage(response, ['Am I on track?', 'View breakdown', 'Tell me about catch-up contributions', 'What else?']);
+                // View breakdown (detailed balance breakdown) - check FIRST before balance
+                if (lowerMsg.includes('view breakdown') || (lowerMsg.includes('breakdown') && !lowerMsg.includes('contribution') && !lowerMsg.includes('allocation'))) {
+                    messageHandled = true;
+                    const ytdGrowth = account.balance * account.ytdReturn;
+                    const accountEarnings = account.balance - account.ytdContributions - account.ytdEmployerMatch;
+                    const totalYtdContributions = account.ytdContributions + account.ytdEmployerMatch;
+                    
+                    const response = `Here's a detailed breakdown of your account balance:\n\n📊 <b>Account Balance: $${account.balance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</b>\n\n<b>Year-to-Date Activity:</b>\n• Your contributions: $${account.ytdContributions.toLocaleString()}\n• Employer match: $${account.ytdEmployerMatch.toLocaleString()}\n• Total contributions YTD: $${totalYtdContributions.toLocaleString()}\n• Investment returns YTD: $${Math.round(ytdGrowth).toLocaleString()} (${(account.ytdReturn * 100).toFixed(1)}%)\n\n<b>Current Contribution Strategy:</b>\n• Regular contribution: ${(account.contributionRate * 100).toFixed(0)}% of salary ($${Math.round((account.salary * account.contributionRate) / 24).toLocaleString()}/paycheck)\n• Catch-up contribution: $${account.catchUpContribution.toLocaleString()}/year\n• Employer match: ${(account.employerMatchRate * 100).toFixed(0)}% up to ${(account.employerMatchCap * 100).toFixed(0)}% (you're maximizing this ✓)\n• Total annual contributions: ~$${Math.round(account.ytdContributions + account.ytdEmployerMatch + account.catchUpContribution).toLocaleString()}\n\nThis gives you a clear picture of where your savings stand. Would you like to see how this compares to your retirement goals?`;
+                    addAIMessage(response, ['Am I on track to retire at 65?', 'Run a projection', 'Should I consolidate my old 401(k)s?', 'What else?']);
+                }
+                // Balance inquiry (Gen X tone: reassuring, clear)
+                else if (lowerMsg.includes('balance') || lowerMsg.includes('how much')) {
+                    const response = `Your current balance is $${account.balance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}.\n\nThis includes your regular contributions and the $${account.catchUpContribution.toLocaleString()} catch-up contribution you're making this year. Your account is up ${(account.ytdReturn * 100).toFixed(1)}% year-to-date.\n\nWould you like a detailed breakdown or to check if you're on track for retirement?`;
+                    addAIMessage(response, ['Am I on track to retire at 65?', 'View breakdown', 'How do catch-up contributions work?', 'What else?']);
                 }
                 // Contribution rate percentage selection (handle before contribution change question)
                 else if (lowerMsg.match(/^\d+%$/) || lowerMsg.match(/^\d+\.?\d*%$/)) {
+                    messageHandled = true;
                     // Extract the percentage number
                     const rateMatch = lowerMsg.match(/(\d+\.?\d*)/);
                     if (rateMatch) {
@@ -1401,6 +1434,7 @@
                 }
                 // Change the amount (return to contribution rate selection)
                 else if (lowerMsg.includes('change') && (lowerMsg.includes('amount') || lowerMsg.includes('the amount'))) {
+                    messageHandled = true;
                     const currentRate = (account.contributionRate * 100).toFixed(0);
                     const perPaycheck = (account.salary * account.contributionRate) / 24;
                     const response = `No problem. Let's adjust your contribution rate.\n\n📋 Current setup:\n• Your contribution: ${currentRate}% ($${Math.round(perPaycheck)}/paycheck)\n• Employer match: ${(account.employerMatchRate * 100).toFixed(0)}% up to ${(account.employerMatchCap * 100).toFixed(0)}% (you're maximizing this ✓)\n\nWhat would you like your new contribution rate to be?`;
@@ -1408,13 +1442,15 @@
                 }
                 // Contribution change
                 else if ((lowerMsg.includes('contribution') && lowerMsg.includes('change')) || (lowerMsg.includes('change') && lowerMsg.includes('rate') && !lowerMsg.includes('amount'))) {
+                    messageHandled = true;
                     const currentRate = (account.contributionRate * 100).toFixed(0);
                     const perPaycheck = (account.salary * account.contributionRate) / 24;
                     const response = `I can help you change your contribution rate.\n\n📋 Current setup:\n• Your contribution: ${currentRate}% ($${Math.round(perPaycheck)}/paycheck)\n• Employer match: ${(account.employerMatchRate * 100).toFixed(0)}% up to ${(account.employerMatchCap * 100).toFixed(0)}% (you're maximizing this ✓)\n\nWhat would you like your new contribution rate to be?`;
                     addAIMessage(response, ['10%', '12%', '15%', 'Enter custom %']);
                 }
-                // Gen X: Run a projection (calculate retirement projection)
-                else if (lowerMsg.includes('run a projection') || lowerMsg.includes('projection')) {
+                // Gen X: Run a projection (provides clarity on "am I doing this right")
+                else if (lowerMsg.includes('run a projection') || lowerMsg.includes('projection') || (lowerMsg.includes('yes') && chatMessages[chatMessages.length - 1] && chatMessages[chatMessages.length - 1].content && chatMessages[chatMessages.length - 1].content.includes('run a projection'))) {
+                    messageHandled = true;
                     // Calculate retirement projection
                     const currentAge = currentUser.age;
                     const retirementAge = 65;
@@ -1436,33 +1472,37 @@
                     }
                     
                     // Also calculate with consolidation scenario
-                    const consolidatedBalance = currentBalance + currentUser.externalAccounts[0].balance;
+                    const totalOldAccounts = currentUser.externalAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+                    const consolidatedBalance = currentBalance + totalOldAccounts;
                     let consolidatedProjected = consolidatedBalance;
-                    let consolidatedContributions = 0;
                     for (let year = 0; year < yearsToRetirement; year++) {
                         consolidatedProjected = consolidatedProjected * (1 + assumedReturn);
                         consolidatedProjected += totalAnnualContribution;
-                        consolidatedContributions += totalAnnualContribution;
                     }
                     
                     const growth = projectedBalance - currentBalance - totalContributions;
-                    const consolidatedGrowth = consolidatedProjected - consolidatedBalance - consolidatedContributions;
                     
-                    const response = `Here's your retirement projection based on your current strategy:\n\n📊 **Current Scenario** (Age ${currentAge} → 65, ${yearsToRetirement} years):\n• Starting balance: $${currentBalance.toLocaleString()}\n• Annual contributions: $${Math.round(totalAnnualContribution).toLocaleString()} (your $${Math.round(annualContribution).toLocaleString()} + catch-up $${annualCatchUp.toLocaleString()} + match $${Math.round(annualMatch).toLocaleString()})\n• Total contributions: $${Math.round(totalContributions).toLocaleString()}\n• Projected growth: $${Math.round(growth).toLocaleString()}\n• **Projected balance at 65: ~$${Math.round(projectedBalance).toLocaleString()}**\n\n💡 **With Consolidation** (if you roll over your previous 401k):\n• Starting balance: $${consolidatedBalance.toLocaleString()}\n• **Projected balance at 65: ~$${Math.round(consolidatedProjected).toLocaleString()}**\n• Additional value: ~$${Math.round(consolidatedProjected - projectedBalance).toLocaleString()}\n\n*Assumes 6% average annual return. Actual results will vary.*\n\nWould you like to explore different scenarios or discuss consolidation?`;
-                    addAIMessage(response, ['Show me different contribution scenarios', 'Tell me about consolidation', 'What else can I do?', 'Talk to an advisor']);
+                    const response = `Here's your retirement projection to help answer "am I doing this right?":\n\n📊 <b>Current Strategy</b> (Age ${currentAge} → 65, ${yearsToRetirement} years):\n• Starting balance: $${currentBalance.toLocaleString()}\n• Annual contributions: $${Math.round(totalAnnualContribution).toLocaleString()} (your $${Math.round(annualContribution).toLocaleString()} + catch-up $${annualCatchUp.toLocaleString()} + match $${Math.round(annualMatch).toLocaleString()})\n• Total you'll contribute: $${Math.round(totalContributions).toLocaleString()}\n• Projected investment growth: $${Math.round(growth).toLocaleString()}\n• <b>Projected balance at 65: ~$${Math.round(projectedBalance).toLocaleString()}</b>\n\n💡 <b>If You Consolidate</b> (roll over your three old 401(k)s totaling $${totalOldAccounts.toLocaleString()}):\n• Starting balance: $${consolidatedBalance.toLocaleString()}\n• <b>Projected balance at 65: ~$${Math.round(consolidatedProjected).toLocaleString()}</b>\n• Additional value: ~$${Math.round(consolidatedProjected - projectedBalance).toLocaleString()}\n\n*Assumes 6% average annual return. This is a projection—actual results will vary based on market performance.*\n\nThis gives you a clearer picture. Would you like to explore different contribution scenarios or discuss consolidating your old accounts?`;
+                    addAIMessage(response, ['Show me different contribution scenarios', 'Should I consolidate my old 401(k)s?', 'What else can I do?', 'Talk to an advisor']);
                 }
-                // Gen X: Am I on track? (reassuring, solution-oriented)
-                else if (lowerMsg.includes('on track') || lowerMsg.includes('track') && (lowerMsg.includes('retirement') || lowerMsg.includes('readiness'))) {
-                    const response = `You're in a strong position, David. With a balance of $${account.balance.toLocaleString()} and your current contribution strategy, you're making solid progress.\n\nHere's what I see:\n• You're maximizing catch-up contributions ($${account.catchUpContribution.toLocaleString()}/year) ✓\n• You're contributing 15% annually, which is above the recommended 10-15% range\n• Your portfolio is appropriately allocated for someone your age\n\nAt your current pace, you're building toward a secure retirement. Would you like me to run a retirement readiness projection or discuss strategies to optimize further?`;
-                    addAIMessage(response, ['Run a projection', 'Tell me about consolidation', 'What else can I do?', 'Talk to an advisor']);
+                // Gen X: Am I on track? (acknowledges anxiety, provides clarity)
+                else if (lowerMsg.includes('on track') || (lowerMsg.includes('track') && (lowerMsg.includes('retirement') || lowerMsg.includes('65')))) {
+                    messageHandled = true;
+                    const retirementAge = 65;
+                    const yearsToRetirement = retirementAge - currentUser.age;
+                    const response = `I understand you want clarity on whether you're on track. Let me give you an honest assessment.\n\nWith your current balance of $${account.balance.toLocaleString()} and ${yearsToRetirement} years until age 65, here's what I see:\n\n<b>What you're doing well:</b>\n• You're maximizing catch-up contributions ($${account.catchUpContribution.toLocaleString()}/year) ✓\n• Contributing 15% annually is above the typical 10-15% recommendation\n• Your portfolio allocation is appropriate for your age\n\n<b>To give you a personalized answer</b>, I'd need to run a projection based on your specific retirement goals and expenses. Would you like me to do that now?`;
+                    addAIMessage(response, ['Yes, run a projection', 'Should I consolidate my old 401(k)s?', 'How do catch-up contributions work?', 'Talk to an advisor']);
                 }
-                // Gen X: Catch-up contributions (clear catch-up strategies)
+                // Gen X: Catch-up contributions (explains clearly, addresses "are they worth it")
                 else if (lowerMsg.includes('catch') || lowerMsg.includes('catch-up') || lowerMsg.includes('catchup')) {
-                    const response = `Since you're over 50, you can contribute an extra $7,500 per year on top of the regular $23,000 limit.\n\n📊 Your current setup:\n• Regular contribution: $23,000/year (maxed ✓)\n• Catch-up contribution: $${account.catchUpContribution.toLocaleString()}/year (maxed ✓)\n\nYou're already taking full advantage of catch-up contributions—excellent strategy. This extra $${account.catchUpContribution.toLocaleString()} each year can make a significant difference in your final balance.\n\nI also noticed you have a previous 401(k) with about $${currentUser.externalAccounts[0].balance.toLocaleString()}. Have you considered consolidating it here? It could simplify your planning and potentially reduce fees.`;
-                    addAIMessage(response, ['Tell me more about consolidation', 'What are the benefits?', 'I\'m good for now']);
+                    messageHandled = true;
+                    const totalOldAccounts = currentUser.externalAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+                    const response = `Since you're 50 or older, you can contribute an extra $7,500 per year on top of the regular $23,000 limit.\n\n📊 <b>Your current setup:</b>\n• Regular contribution: $23,000/year (maxed ✓)\n• Catch-up contribution: $${account.catchUpContribution.toLocaleString()}/year (maxed ✓)\n\n<b>Are they worth it?</b> Absolutely. This extra $${account.catchUpContribution.toLocaleString()} each year gets the same tax benefits and has ${65 - currentUser.age} years to grow before retirement. At a 6% return, that's roughly an extra $${Math.round(account.catchUpContribution * 18).toLocaleString()} toward your retirement.\n\n<b>I also notice you have three old 401(k) accounts</b> totaling about $${totalOldAccounts.toLocaleString()}. Consolidating them here could simplify your planning and give you better oversight. Want to explore that?`;
+                    addAIMessage(response, ['Should I consolidate my old 401(k)s?', 'What are the benefits of consolidation?', 'Tell me more about catch-ups', 'What else?']);
                 }
                 // Gen X: Different contribution scenarios
                 else if (lowerMsg.includes('different contribution') || lowerMsg.includes('scenarios')) {
+                    messageHandled = true;
                     const currentAge = currentUser.age;
                     const retirementAge = 65;
                     const yearsToRetirement = retirementAge - currentAge;
@@ -1508,24 +1548,35 @@
                             diffLabel = difference > 0 ? ` (+$${Math.round(difference).toLocaleString()} vs current)` : ` (-$${Math.abs(Math.round(difference)).toLocaleString()} vs current)`;
                         }
                         
-                        response += `**${scenario.label}**:\n• Annual contribution: $${Math.round(totalAnnual).toLocaleString()}\n• Projected at 65: ~$${Math.round(projected).toLocaleString()}${diffLabel}\n\n`;
+                        response += `<b>${scenario.label}</b>:\n• Annual contribution: $${Math.round(totalAnnual).toLocaleString()}\n• Projected at 65: ~$${Math.round(projected).toLocaleString()}${diffLabel}\n\n`;
                     });
                     
                     response += `*Assumes 6% average annual return. Actual results will vary.*\n\nWould you like to change your contribution rate or explore other options?`;
                     addAIMessage(response, ['Change my contribution rate', 'Tell me about consolidation', 'What else?', 'Talk to an advisor']);
                 }
-                // Gen X: Account consolidation (solution-oriented)
-                else if (lowerMsg.includes('consolidat') || lowerMsg.includes('old account') || lowerMsg.includes('previous 401k')) {
-                    const response = `Consolidating your previous employer's 401(k) into this account has several benefits:\n\n• **Simplified management** - One account to track instead of multiple\n• **Lower fees** - Our plan's expense ratios are competitive\n• **Better oversight** - Easier to see your complete retirement picture\n• **Investment options** - Access to our full range of funds\n\nYour previous 401(k) has a balance of approximately $${currentUser.externalAccounts[0].balance.toLocaleString()}. Rolling it over would bring your total balance to about $${(account.balance + currentUser.externalAccounts[0].balance).toLocaleString()}.\n\nWould you like me to walk you through the rollover process, or would you prefer to speak with a retirement specialist?`;
-                    addAIMessage(response, ['Walk me through it', 'Talk to a specialist', 'What are the tax implications?', 'Not right now']);
+                // Gen X: Account consolidation (addresses multiple old 401ks, provides clear guidance)
+                else if (lowerMsg.includes('consolidat') || lowerMsg.includes('old 401k') || lowerMsg.includes('old account') || lowerMsg.includes('previous 401')) {
+                    messageHandled = true;
+                    const totalOldAccounts = currentUser.externalAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+                    const consolidatedBalance = account.balance + totalOldAccounts;
+                    
+                    let accountsList = '';
+                    currentUser.externalAccounts.forEach((acc, idx) => {
+                        accountsList += `• ${acc.provider}: $${acc.balance.toLocaleString()} (last updated ${acc.lastUpdated})\n`;
+                    });
+                    
+                    const response = `I see you have <b>three old 401(k) accounts</b> from previous employers. Here's what you're working with:\n\n${accountsList}<b>Total in old accounts: $${totalOldAccounts.toLocaleString()}</b>\n\n<b>Benefits of consolidating into this account:</b>\n• <b>Simplified management</b> - One account instead of four to track\n• <b>Better oversight</b> - See your complete retirement picture in one place\n• <b>Lower fees</b> - Our plan's expense ratios are competitive\n• <b>Investment control</b> - Access to our full range of funds\n• <b>Easier planning</b> - One account makes projections and planning clearer\n\nRolling them all over would bring your total balance here to about <b>$${consolidatedBalance.toLocaleString()}</b>.\n\n<b>Important:</b> There are no tax penalties for rolling over 401(k) to 401(k). The money stays tax-deferred.\n\nWould you like me to walk you through the rollover process, or do you have questions about the tax implications?`;
+                    addAIMessage(response, ['Walk me through the rollover', 'What are the tax implications?', 'Talk to a specialist', 'Not right now']);
                 }
                 // Escalation
                 else if (lowerMsg.includes('human') || lowerMsg.includes('agent') || lowerMsg.includes('representative') || lowerMsg.includes('talk to')) {
+                    messageHandled = true;
                     const response = `Of course. I'll connect you with a retirement specialist who can help.\n\n📋 I'll share our conversation so you won't need to repeat anything.\n\n⏱️ Estimated wait: 2-3 minutes\n\nHow would you like to proceed?`;
                     addAIMessage(response, ['Connect now', 'Schedule callback', 'Keep chatting for now']);
                 }
                 // Investments (Gen X: detailed, solution-oriented)
                 else if (lowerMsg.includes('invest') || lowerMsg.includes('fund') || lowerMsg.includes('allocation')) {
+                    messageHandled = true;
                     let response = `Here's your current investment allocation:\n\n`;
                     currentUser.investments.forEach(inv => {
                         response += `• ${inv.name} (${inv.ticker}): ${(inv.allocation * 100).toFixed(0)}% allocation - ${(inv.ytdReturn * 100).toFixed(1)}% YTD return\n`;
@@ -1535,6 +1586,7 @@
                 }
                 // Confirm change
                 else if (lowerMsg.includes('confirm') && lowerMsg.includes('change')) {
+                    messageHandled = true;
                     const response = `✓ Your contribution rate change has been confirmed!\n\nYou'll see the new rate reflected starting with your next pay period. A confirmation email has been sent to your registered email address.\n\nIs there anything else I can help you with?`;
                     addAIMessage(response, [
                         'What\'s my balance?',
@@ -1544,6 +1596,7 @@
                 }
                 // Cancel change
                 else if (lowerMsg.includes('cancel')) {
+                    messageHandled = true;
                     const response = `No problem. Your contribution rate remains unchanged.\n\nWhat else can I help you with?`;
                     addAIMessage(response, [
                         'What\'s my balance?',
@@ -1552,14 +1605,27 @@
                         'Talk to a human'
                     ]);
                 }
-                // Default - always include quick replies
+                // Reset conversation - "What other options do I have?"
+                else if (lowerMsg.includes('what other options') || lowerMsg.includes('other options')) {
+                    messageHandled = true;
+                    unhandledReplies.clear(); // Reset tracking
+                    chatMessages = [];
+                    document.getElementById('chatbotMessages').innerHTML = '';
+                    init(); // Restart conversation
+                    return;
+                }
+                // Default - unhandled reply, track it and do nothing (first click does nothing)
                 else {
-                    addAIMessage(`I understand you're asking about "${message}". Let me help you with that.\n\nHere are some things I can help with:`, [
-                        'What\'s my balance?',
-                        'Change contribution',
-                        'View investments',
-                        'Talk to a human'
-                    ]);
+                    if (!messageHandled) {
+                        unhandledReplies.add(message);
+                        // Don't add any AI message - just silently track the click
+                        return;
+                    }
+                }
+                
+                // Clear unhandled tracking if message was successfully handled
+                if (messageHandled) {
+                    unhandledReplies.clear();
                 }
                 
                 // Always scroll to bottom after adding message
