@@ -642,6 +642,83 @@
             background: #0515d4;
         }
         
+        /* End of Demo Modal */
+        .demo-end-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .demo-end-modal.open {
+            display: flex;
+        }
+        
+        .demo-end-modal-content {
+            background: white;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            border-radius: 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .demo-end-modal-content h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: rgb(2, 11, 91);
+            font-family: 'Lab Antiqua', serif;
+        }
+        
+        .demo-end-modal-content p {
+            font-size: 16px;
+            color: rgb(2, 11, 91);
+            margin-bottom: 24px;
+            font-weight: 300;
+        }
+        
+        .demo-end-modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .demo-end-modal-button {
+            padding: 12px 24px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 0;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        .demo-end-modal-button.restart {
+            background: #0619f5;
+            color: white;
+        }
+        
+        .demo-end-modal-button.restart:hover {
+            background: #050dd9;
+        }
+        
+        .demo-end-modal-button.close {
+            background: #E2E8F0;
+            color: rgb(2, 11, 91);
+        }
+        
+        .demo-end-modal-button.close:hover {
+            background: #CBD5E0;
+        }
+        
         /* Typing Indicator */
         .typing-indicator {
             display: flex;
@@ -1064,6 +1141,18 @@
                 </div>
             </div>
         </div>
+        
+        <!-- End of Demo Modal -->
+        <div class="demo-end-modal" id="demoEndModal">
+            <div class="demo-end-modal-content">
+                <h2>You've reached the end of this demo.</h2>
+                <p>Thank you for exploring the State Street Retirement Assistant. Would you like to restart the experience?</p>
+                <div class="demo-end-modal-buttons">
+                    <button class="demo-end-modal-button restart" onclick="restartConversation()">Restart</button>
+                    <button class="demo-end-modal-button close" onclick="closeDemoEndModal()">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1110,7 +1199,6 @@
         // ============================================
         let chatMessages = [];
         let isTyping = false;
-        let unhandledReplies = new Set(); // Track quick replies that were clicked but not handled
 
         // ============================================
         // INITIALIZATION
@@ -1362,18 +1450,24 @@
         // ============================================
         // CONVERSATION HANDLING
         // ============================================
+        function showDemoEndModal() {
+            document.getElementById('demoEndModal').classList.add('open');
+        }
+        
+        function closeDemoEndModal() {
+            document.getElementById('demoEndModal').classList.remove('open');
+        }
+        
+        function restartConversation() {
+            closeDemoEndModal();
+            chatMessages = [];
+            document.getElementById('chatbotMessages').innerHTML = '';
+            init(); // Restart conversation
+        }
+
         function handleConversation(message) {
             const lowerMsg = message.toLowerCase();
             const account = currentUser.account;
-            
-            // Check if this was an unhandled reply - if so, restart conversation
-            if (unhandledReplies.has(message)) {
-                unhandledReplies.clear(); // Reset tracking
-                chatMessages = [];
-                document.getElementById('chatbotMessages').innerHTML = '';
-                init(); // Restart conversation
-                return;
-            }
             
             // Track whether we successfully handled this message
             let messageHandled = false;
@@ -1605,27 +1699,24 @@
                         'Talk to a human'
                     ]);
                 }
-                // Reset conversation - "What other options do I have?"
-                else if (lowerMsg.includes('what other options') || lowerMsg.includes('other options')) {
+                // Reset conversation handlers - show end of demo modal
+                else if (lowerMsg.includes('keep chatting for now') || 
+                         lowerMsg.includes('connect now') || 
+                         lowerMsg.includes('rebalance my portfolio') ||
+                         lowerMsg.includes('schedule callback') || 
+                         lowerMsg.includes('walk me through') ||
+                         lowerMsg.includes('what other options') || 
+                         lowerMsg.includes('other options')) {
                     messageHandled = true;
-                    unhandledReplies.clear(); // Reset tracking
-                    chatMessages = [];
-                    document.getElementById('chatbotMessages').innerHTML = '';
-                    init(); // Restart conversation
+                    showDemoEndModal();
                     return;
                 }
-                // Default - unhandled reply, track it and do nothing (first click does nothing)
+                // Default - unhandled reply, show end of demo modal
                 else {
                     if (!messageHandled) {
-                        unhandledReplies.add(message);
-                        // Don't add any AI message - just silently track the click
+                        showDemoEndModal();
                         return;
                     }
-                }
-                
-                // Clear unhandled tracking if message was successfully handled
-                if (messageHandled) {
-                    unhandledReplies.clear();
                 }
                 
                 // Always scroll to bottom after adding message
